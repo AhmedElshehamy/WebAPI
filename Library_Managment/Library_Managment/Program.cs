@@ -70,26 +70,36 @@ namespace Library_Managment
                 {
                     OnAuthenticationFailed = context =>
                     {
-                        Console.WriteLine($"JWT Authentication failed: {context.Exception.Message}");
+                        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                        logger.LogError($"JWT Authentication failed: {context.Exception.Message}");
+                        logger.LogError($"Exception details: {context.Exception}");
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
                     {
-                        Console.WriteLine($"JWT Token validated successfully for: {context.Principal?.Identity?.Name}");
+                        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                        logger.LogInformation($"JWT Token validated successfully for: {context.Principal?.Identity?.Name}");
+                        logger.LogInformation($"Claims: {string.Join(", ", context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}"))}");
                         return Task.CompletedTask;
                     },
                     OnMessageReceived = context =>
                     {
+                        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
                         var token = context.Token;
                         if (!string.IsNullOrEmpty(token))
                         {
-                            Console.WriteLine($"JWT Token received: {token.Substring(0, Math.Min(50, token.Length))}...");
+                            logger.LogInformation($"JWT Token received: {token.Substring(0, Math.Min(50, token.Length))}...");
+                        }
+                        else
+                        {
+                            logger.LogWarning("No JWT token received in request");
                         }
                         return Task.CompletedTask;
                     },
                     OnChallenge = context =>
                     {
-                        Console.WriteLine($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
+                        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                        logger.LogWarning($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
                         return Task.CompletedTask;
                     }
                 };
@@ -99,18 +109,26 @@ namespace Library_Managment
 
             var app = builder.Build();
 
-
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.UseSwaggerUI(op => op.SwaggerEndpoint("/openapi/v1.json", "v1"));
             }
 
+            // Add detailed logging for debugging
+            app.Use(async (context, next) =>
+            {
+                var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogInformation($"Request Path: {context.Request.Path}");
+                logger.LogInformation($"Authorization Header: {context.Request.Headers["Authorization"]}");
+                await next();
+            });
+
             app.UseHttpsRedirection();
-            app.UseCors("AllowAngularDevClient");
             app.UseRouting();
+            app.UseCors("AllowAngularDevClient");
 
-
+            // Authentication and Authorization middleware
             app.UseAuthentication();
             app.UseAuthorization();
 
