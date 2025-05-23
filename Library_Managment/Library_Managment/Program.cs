@@ -73,6 +73,7 @@ namespace Library_Managment
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
                         logger.LogError($"JWT Authentication failed: {context.Exception.Message}");
                         logger.LogError($"Exception details: {context.Exception}");
+                        logger.LogError($"Token: {context.Request.Headers["Authorization"]}");
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
@@ -80,26 +81,43 @@ namespace Library_Managment
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
                         logger.LogInformation($"JWT Token validated successfully for: {context.Principal?.Identity?.Name}");
                         logger.LogInformation($"Claims: {string.Join(", ", context.Principal?.Claims.Select(c => $"{c.Type}: {c.Value}"))}");
+                        logger.LogInformation($"Token: {context.Request.Headers["Authorization"]}");
                         return Task.CompletedTask;
                     },
                     OnMessageReceived = context =>
                     {
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                        var token = context.Token;
-                        if (!string.IsNullOrEmpty(token))
+                        var authHeader = context.Request.Headers["Authorization"].ToString();
+                        logger.LogInformation($"Authorization Header: {authHeader}");
+                        
+                        if (string.IsNullOrEmpty(authHeader))
                         {
-                            logger.LogInformation($"JWT Token received: {token.Substring(0, Math.Min(50, token.Length))}...");
+                            logger.LogWarning("Authorization header is empty");
+                            return Task.CompletedTask;
                         }
-                        else
+
+                        if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                         {
-                            logger.LogWarning("No JWT token received in request");
+                            logger.LogWarning("Authorization header does not start with 'Bearer '");
+                            return Task.CompletedTask;
                         }
+
+                        var token = authHeader.Substring("Bearer ".Length).Trim();
+                        if (string.IsNullOrEmpty(token))
+                        {
+                            logger.LogWarning("Token is empty after removing 'Bearer ' prefix");
+                            return Task.CompletedTask;
+                        }
+
+                        context.Token = token;
+                        logger.LogInformation($"Extracted token: {token.Substring(0, Math.Min(50, token.Length))}...");
                         return Task.CompletedTask;
                     },
                     OnChallenge = context =>
                     {
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
                         logger.LogWarning($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
+                        logger.LogWarning($"Token: {context.Request.Headers["Authorization"]}");
                         return Task.CompletedTask;
                     }
                 };
